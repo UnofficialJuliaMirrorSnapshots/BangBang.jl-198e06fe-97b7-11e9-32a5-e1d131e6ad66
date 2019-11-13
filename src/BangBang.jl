@@ -4,18 +4,23 @@ module BangBang
 @doc read(joinpath(dirname(@__DIR__), "README.md"), String) BangBang
 
 export @!,
+       @set!!,
+       Empty,
        append!!,
        delete!!,
+       deleteat!!,
        empty!!,
        lmul!!,
        materialize!!,
        mul!!,
        pop!!,
        popfirst!!,
+       prefermutation,
        push!!,
        pushfirst!!,
        rmul!!,
        setindex!!,
+       setproperties!!,
        setproperty!!,
        singletonof,
        splice!!
@@ -33,7 +38,7 @@ function ismutable end
 function push!! end
 
 include("NoBang/NoBang.jl")
-using .NoBang: ImmutableContainer, singletonof
+using .NoBang: Empty, ImmutableContainer, singletonof
 
 include("core.jl")
 include("base.jl")
@@ -42,6 +47,9 @@ include("initials.jl")
 include("macro.jl")
 include("dataframes_impl.jl")
 include("zygote.jl")
+
+include("setfield.jl")
+using .SetfieldImpl: @set!!, prefermutation
 
 function __init__()
     @require StaticArrays = "90137ffa-7385-5640-81b9-e52037218182" begin

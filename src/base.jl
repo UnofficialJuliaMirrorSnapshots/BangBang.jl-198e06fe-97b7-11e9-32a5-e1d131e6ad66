@@ -23,6 +23,10 @@ julia> push!!([1, 2], 3.0)
  2.0
  3.0
 
+julia> using StaticArrays: SVector
+
+julia> @assert push!!(SVector(1, 2), 3.0) === SVector(1.0, 2.0, 3.0)
+
 julia> using DataFrames: DataFrame
 
 julia> @assert push!!(DataFrame(a=[1], b=[2]), (a=3.5, b=4.5)) ==
@@ -68,6 +72,10 @@ julia> append!!([1, 2], (3, 4))
  2
  3
  4
+
+julia> using StaticArrays: SVector
+
+julia> @assert append!!(SVector(1, 2), (3, 4)) === SVector(1, 2, 3, 4)
 
 julia> using DataFrames: DataFrame
 
@@ -116,6 +124,10 @@ julia> pushfirst!!([1, 2], 3, 4.0)
  4.0
  1.0
  2.0
+
+julia> using StaticArrays: SVector
+
+julia> @assert pushfirst!!(SVector(1, 2), 3, 4) === SVector(3, 4, 1, 2)
 ```
 """
 pushfirst!!(xs, ys...) = may(pushfirst!, xs, ys...)
@@ -146,6 +158,10 @@ julia> pop!!(Dict(:a => 1), :a)
 
 julia> pop!!((a=1,), :a)
 (NamedTuple(), 1)
+
+julia> using StaticArrays: SVector
+
+julia> @assert pop!!(SVector(1, 2)) === (SVector(1), 2)
 ```
 """
 pop!!(xs, args...) = may(_pop!, xs, args...)
@@ -155,7 +171,45 @@ pure(::typeof(_pop!)) = NoBang.pop
 possible(::typeof(_pop!), ::C, ::Vararg) where C = ismutable(C)
 
 """
+    deleteat!!(assoc, i) -> assoc′
+
+# Examples
+```jldoctest
+julia> using BangBang
+
+julia> deleteat!!((1, 2, 3), 2)
+(1, 3)
+
+julia> deleteat!!([1, 2, 3], 2)
+2-element Array{Int64,1}:
+ 1
+ 3
+
+julia> using StaticArrays: SVector
+
+julia> @assert deleteat!!(SVector(1, 2, 3), 2) === SVector(1, 3)
+```
+"""
+deleteat!!(xs, key) = may(deleteat!, xs, key)
+
+pure(::typeof(deleteat!)) = NoBang.deleteat
+_asbb(::typeof(deleteat!)) = deleteat!!
+possible(::typeof(deleteat!), ::C, ::Any) where C = ismutable(C)
+
+"""
     delete!!(assoc, key) -> assoc′
+
+# Examples
+```jldoctest
+julia> using BangBang
+
+julia> delete!!((a=1, b=2), :a)
+(b = 2,)
+
+julia> delete!!(Dict(:a=>1, :b=>2), :a)
+Dict{Symbol,Int64} with 1 entry:
+  :b => 2
+```
 """
 delete!!(xs, key) = may(delete!, xs, key)
 
@@ -175,6 +229,13 @@ julia> popfirst!!([0, 1])
 
 julia> popfirst!!((0, 1))
 ((1,), 0)
+
+julia> popfirst!!((a=0, b=1))
+((b = 1,), 0)
+
+julia> using StaticArrays: SVector
+
+julia> @assert popfirst!!(SVector(1, 2)) === (SVector(2), 1)
 ```
 """
 popfirst!!(xs) = may(_popfirst!, xs)
@@ -203,6 +264,10 @@ julia> empty!!(xs)
 
 julia> xs
 0-element Array{Int64,1}
+
+julia> using StaticArrays: SVector
+
+julia> @assert empty!!(SVector(1, 2)) == SVector{0, Int}()
 ```
 """
 empty!!(xs) = may(empty!, xs)
@@ -220,6 +285,21 @@ possible(::typeof(empty!), ::C) where C = ismutable(C)
 
 """
     splice!!(sequence, i, [replacement]) -> (sequence′, item)
+
+# Examples
+```jldoctest
+julia> using BangBang
+
+julia> splice!!([1, 2, 3], 2)
+([1, 3], 2)
+
+julia> splice!!((1, 2, 3), 2)
+((1, 3), 2)
+
+julia> using StaticArrays: SVector
+
+julia> @assert splice!!(SVector(1, 2, 3), 2) === (SVector(1, 3), 2)
+```
 """
 splice!!(xs, args...) = may(_splice!, xs, args...)
 _splice!(xs, args...) = xs, splice!(xs, args...)
@@ -233,6 +313,23 @@ possible(::typeof(_splice!), xs::C, i::Any, ::S) where {C, S} =
 
 """
     setindex!!(collection, value, indices...) -> collection′
+
+# Examples
+```jldoctest
+julia> using BangBang
+
+julia> setindex!!((1, 2), 10.0, 1)
+(10.0, 2)
+
+julia> setindex!!([1, 2], 10.0, 1)
+2-element Array{Float64,1}:
+ 10.0
+  2.0
+
+julia> using StaticArrays: SVector
+
+julia> @assert setindex!!(SVector(1, 2), 10.0, 1) == SVector(10.0, 2.0)
+```
 """
 Base.@propagate_inbounds setindex!!(xs, v, I...) = may(_setindex!, xs, v, I...)
 
@@ -248,13 +345,14 @@ possible(::typeof(_setindex!), ::C, ::V, ::K) where {C <: AbstractDict, V, K} =
     promote_type(valtype(C), V) <: valtype(C)
 
 """
-    setproperty!!(value, name, x)
+    setproperties!!(value, patch::NamedTuple)
+    setproperties!!(value; patch...)
 
 # Examples
 ```jldoctest
 julia> using BangBang
 
-julia> setproperty!!((a=1, b=2), :b, 3)
+julia> setproperties!!((a=1, b=2); b=3)
 (a = 1, b = 3)
 
 julia> struct Immutable
@@ -262,33 +360,60 @@ julia> struct Immutable
            b
        end
 
-julia> setproperty!!(Immutable(1, 2), :b, 3)
+julia> setproperties!!(Immutable(1, 2); b=3)
 Immutable(1, 3)
 
-julia> mutable struct Mutable
-           a
-           b
+julia> mutable struct Mutable{T, S}
+           a::T
+           b::S
        end
 
 julia> s = Mutable(1, 2);
 
-julia> setproperty!!(s, :b, 3)
-Mutable(1, 3)
+julia> setproperties!!(s; b=3)
+Mutable{Int64,Int64}(1, 3)
+
+julia> setproperties!!(s, b=4.0)
+Mutable{Int64,Float64}(1, 4.0)
 
 julia> s
-Mutable(1, 3)
+Mutable{Int64,Int64}(1, 3)
 ```
 """
-setproperty!!(value, name, x) = may(_setproperty!, value, name, x)
+@inline setproperties!!(value, patch) = may(setproperties!, value, patch)
+@inline setproperties!!(value; patch...) = setproperties!!(value, (; patch...))
 
-function _setproperty!(value, name, x)
-    setproperty!(value, name, x)
+@inline function setproperties!(value, patch)
+    for (k, v) in pairs(patch)
+        setproperty!(value, k, v)
+    end
     return value
 end
 
-pure(::typeof(_setproperty!)) = NoBang.setproperty
-possible(::typeof(_setproperty!), x, ::Any, ::Any) = ismutablestruct(x)
+@inline function setproperties!(value, patch::NamedTuple)
+    ntuple(length(patch)) do i
+        setproperty!(value, keys(patch)[i], patch[i])
+    end
+    return value
+end
 
+pure(::typeof(setproperties!)) = NoBang.setproperties
+possible(::typeof(setproperties!), obj, patch) =
+    ismutablestruct(obj) && _is_compatible_field_types(obj, patch)
+
+_is_compatible_field_types(::T, patch) where T =
+    all(n -> fieldtype(typeof(patch), n) <: fieldtype(T, n), keys(patch))
+
+@generated function _is_compatible_field_types(obj, patch::NamedTuple{pnames}) where pnames
+    all(n -> fieldtype(patch, n) <: fieldtype(obj, n), pnames)
+end
+
+"""
+    setproperty!!(value, name::Symbol, x)
+
+An alias of `setproperty!!(value, (name=x,))`.
+"""
+setproperty!!(value, name::Symbol, x) = setproperties!!(value, (; name => x))
 
 """
     materialize!!(dest, x)
